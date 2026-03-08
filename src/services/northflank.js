@@ -4,6 +4,7 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
   const projectId = process.env.NORTHFLANK_PROJECT_ID;
   const serviceName = `preview-${sessionId}`;
 
+  // Basic port detection
   let port = 3000;
   if (startCommand.includes('vite') || startCommand.includes('dev')) {
     port = 5173;
@@ -26,8 +27,11 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
   };
 
   try {
-    // Create the service
-    const createResponse = await fetch(`${NORTHFLANK_API}/projects/${projectId}/services`, {
+    const url = `${NORTHFLANK_API}/projects/${projectId}/services`;
+    console.log('Creating service at URL:', url);
+    console.log('Payload:', JSON.stringify(servicePayload, null, 2));
+
+    const createResponse = await fetch(url, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.NORTHFLANK_API_TOKEN}`,
@@ -37,8 +41,10 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
     });
 
     if (!createResponse.ok) {
-      const error = await createResponse.text();
-      throw new Error(`Northflank API error: ${createResponse.status} - ${error}`);
+      const errorText = await createResponse.text();
+      console.error('Response status:', createResponse.status);
+      console.error('Response body:', errorText);
+      throw new Error(`Northflank API error: ${createResponse.status} - ${errorText}`);
     }
 
     const service = await createResponse.json();
