@@ -1,16 +1,24 @@
-const NORTHFLANK_API = 'https://api.northflank.com/v1';
+const NORTHFLANK_BASE = 'https://api.northflank.com';
+
+// Try both v1 and v2
+const endpoints = [
+  `${NORTHFLANK_BASE}/v1/projects/${process.env.NORTHFLANK_PROJECT_ID}/services`,
+  `${NORTHFLANK_BASE}/v2/projects/${process.env.NORTHFLANK_PROJECT_ID}/services`,
+  `${NORTHFLANK_BASE}/projects/${process.env.NORTHFLANK_PROJECT_ID}/services`,
+];
 
 export async function createPreviewService(sessionId, downloadUrl, startCommand) {
   const projectId = process.env.NORTHFLANK_PROJECT_ID;
+  const token = process.env.NORTHFLANK_API_TOKEN;
   const serviceName = `preview-${sessionId}`;
 
-  // Log what we're about to do
-  console.log('Creating Northflank service with:');
-  console.log('- Project ID:', projectId);
-  console.log('- Service Name:', serviceName);
-  console.log('- Start Command:', startCommand);
+  console.log('========== Northflank Debug ==========');
+  console.log('Project ID:', projectId);
+  console.log('Token exists:', !!token);
+  if (!projectId || !token) {
+    throw new Error('NORTHFLANK_PROJECT_ID and NORTHFLANK_API_TOKEN must be set');
+  }
 
-  // Detect port
   let port = 3000;
   if (startCommand.includes('vite') || startCommand.includes('dev')) {
     port = 5173;
@@ -32,70 +40,73 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
     },
   };
 
-  try {
-    // CORRECT ENDPOINT: /v1/projects/{projectId}/services
-    const url = `${NORTHFLANK_API}/projects/${projectId}/services`;
-    console.log('POST to:', url);
+  console.log('Payload:', JSON.stringify(servicePayload, null, 2));
 
-    const createResponse = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.NORTHFLANK_API_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(servicePayload),
-    });
+  let lastError = null;
 
-    const responseText = await createResponse.text();
-    console.log('Response status:', createResponse.status);
-    console.log('Response body:', responseText);
+  for (const url of endpoints) {
+    console.log('Trying endpoint:', url);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(servicePayload),
+      });
 
-    if (!createResponse.ok) {
-      throw new Error(`Northflank API error: ${createResponse.status} - ${responseText}`);
-    }
+      const responseText = await response.text();
+      console.log('Response status:', response.status);
+      console.log('Response body:', responseText);
 
-    const service = JSON.parse(responseText);
-    const serviceId = service.data.id;
+      if (response.ok) {
+        const data = JSON.parse(responseText);
+        const serviceId = data.data.id;
 
-    // Wait for service to become healthy
-    let ready = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      const statusResponse = await fetch(
-        `${NORTHFLANK_API}/projects/${projectId}/services/${serviceId}`,
-        {
-          headers: { 'Authorization': `Bearer ${process.env.NORTHFLANK_API_TOKEN}` },
+        // Wait for service to become healthy
+        console.log('Waiting for service to become healthy...');
+        let ready = false;
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          const statusUrl = `${NORTHFLANK_BASE}/v1/projects/${projectId}/services/${serviceId}`;
+          const statusResponse = await fetch(statusUrl, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          if (statusResponse.ok) {
+            const status = await statusResponse.json();
+            if (status.data.status === 'running' && status.data.deploymentStatus === 'healthy') {
+              ready = true;
+              break;
+            }
+          }
         }
-      );
-      if (statusResponse.ok) {
-        const status = await statusResponse.json();
-        if (status.data.status === 'running' && status.data.deploymentStatus === 'healthy') {
-          ready = true;
-          break;
-        }
+
+        if (!ready) throw new Error('Service did not become healthy in time');
+
+        const previewUrl = `https://${serviceName}.northflank.app`;
+        return { serviceId, previewUrl };
+      } else {
+        console.log(`Endpoint ${url} failed with ${response.status}`);
       }
+    } catch (error) {
+      console.error(`Error with endpoint ${url}:`, error);
+      lastError = error;
     }
-
-    if (!ready) throw new Error('Service did not become healthy in time');
-
-    const previewUrl = `https://${serviceName}.northflank.app`;
-    return { serviceId, previewUrl };
-  } catch (error) {
-    console.error('Northflank service creation error:', error);
-    throw error;
   }
+
+  throw new Error(`All endpoints failed. Last error: ${lastError?.message || 'unknown'}`);
 }
 
 export async function stopService(serviceId) {
   const projectId = process.env.NORTHFLANK_PROJECT_ID;
+  const token = process.env.NORTHFLANK_API_TOKEN;
   try {
-    const response = await fetch(
-      `${NORTHFLANK_API}/projects/${projectId}/services/${serviceId}`,
-      {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${process.env.NORTHFLANK_API_TOKEN}` },
-      }
-    );
+    const url = `${NORTHFLANK_BASE}/v1/projects/${projectId}/services/${serviceId}`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
     return response.ok;
   } catch (error) {
     console.error('Error stopping service:', error);
