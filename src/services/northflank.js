@@ -1,10 +1,13 @@
 const NORTHFLANK_BASE = 'https://api.northflank.com';
 
-// Try both v1 and v2
+// Try common endpoint patterns
 const endpoints = [
   `${NORTHFLANK_BASE}/v1/projects/${process.env.NORTHFLANK_PROJECT_ID}/services`,
   `${NORTHFLANK_BASE}/v2/projects/${process.env.NORTHFLANK_PROJECT_ID}/services`,
   `${NORTHFLANK_BASE}/projects/${process.env.NORTHFLANK_PROJECT_ID}/services`,
+  `${NORTHFLANK_BASE}/v1/projects/${process.env.NORTHFLANK_PROJECT_ID}/deployments`,
+  `${NORTHFLANK_BASE}/v1/projects/${process.env.NORTHFLANK_PROJECT_ID}/services/create`,
+  `${NORTHFLANK_BASE}/v1/projects/${process.env.NORTHFLANK_PROJECT_ID}/services/deploy`,
 ];
 
 export async function createPreviewService(sessionId, downloadUrl, startCommand) {
@@ -46,6 +49,24 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
 
   for (const url of endpoints) {
     console.log('Trying endpoint:', url);
+
+    // First, try a GET request to see if the endpoint exists
+    try {
+      const getResponse = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      console.log('GET status:', getResponse.status);
+      if (getResponse.ok) {
+        const getData = await getResponse.text();
+        console.log('GET response (first 200 chars):', getData.substring(0,200));
+      } else {
+        console.log('GET failed with', getResponse.status);
+      }
+    } catch (e) {
+      console.log('GET error:', e.message);
+    }
+
+    // Now try POST
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -57,8 +78,8 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
       });
 
       const responseText = await response.text();
-      console.log('Response status:', response.status);
-      console.log('Response body:', responseText);
+      console.log('POST status:', response.status);
+      console.log('POST response:', responseText);
 
       if (response.ok) {
         const data = JSON.parse(responseText);
@@ -86,8 +107,6 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
 
         const previewUrl = `https://${serviceName}.northflank.app`;
         return { serviceId, previewUrl };
-      } else {
-        console.log(`Endpoint ${url} failed with ${response.status}`);
       }
     } catch (error) {
       console.error(`Error with endpoint ${url}:`, error);
