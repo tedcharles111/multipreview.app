@@ -40,9 +40,8 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
   };
 
   try {
-    console.log('Creating Northflank service with payload:', JSON.stringify(servicePayload, null, 2));
-
-    // Use the SDK to create the service
+    console.log('Creating service with payload:', JSON.stringify(servicePayload, null, 2));
+    // Official SDK uses /v1/projects/{projectId}/services under the hood
     const response = await api.create.service.deployment({
       parameters: { projectId },
       data: servicePayload,
@@ -63,13 +62,12 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
         break;
       }
     }
-
     if (!ready) throw new Error('Service did not become healthy in time');
 
     const previewUrl = `https://${serviceName}.northflank.app`;
     return { serviceId, previewUrl };
   } catch (error) {
-    console.error('Northflank service creation error:', error);
+    console.error('Northflank error:', error);
     throw error;
   }
 }
