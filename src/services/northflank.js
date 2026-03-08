@@ -4,7 +4,6 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
   const projectId = process.env.NORTHFLANK_PROJECT_ID;
   const serviceName = `preview-${sessionId}`;
 
-  // Basic port detection
   let port = 3000;
   if (startCommand.includes('vite') || startCommand.includes('dev')) {
     port = 5173;
@@ -40,14 +39,15 @@ export async function createPreviewService(sessionId, downloadUrl, startCommand)
       body: JSON.stringify(servicePayload),
     });
 
+    const responseText = await createResponse.text();
+    console.log('Response status:', createResponse.status);
+    console.log('Response body:', responseText);
+
     if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      console.error('Response status:', createResponse.status);
-      console.error('Response body:', errorText);
-      throw new Error(`Northflank API error: ${createResponse.status} - ${errorText}`);
+      throw new Error(`Northflank API error: ${createResponse.status} - ${responseText}`);
     }
 
-    const service = await createResponse.json();
+    const service = JSON.parse(responseText);
     const serviceId = service.data.id;
 
     // Wait for service to become healthy
